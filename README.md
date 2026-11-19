@@ -1,10 +1,22 @@
 # MageAOEHelper-Forever
 
+[中文](#中文) · [English](#english) · [下载 / Releases](https://github.com/yimouleng/MageAOEHelper-Forever/releases/latest)
+
+魔兽世界无限服刷怪统计助手：本波经验与击杀、效率、升级估算和金币收支。
+
+A farming tracker for WoW Forever: per-pull XP and kills, farming rates, leveling estimates, and gold changes.
+
+**文档为中英双语，插件界面目前为简体中文。 / This README is bilingual; the in-game UI is currently Simplified Chinese.**
+
+## 中文
+
 魔兽世界无限服刷怪统计助手，简体中文界面。当前版本：**1.6.3**。
 
 目标客户端：WoW Forever 1.60.1（Interface 16001）。这是本地定制版，不是原作者官方发行版。
 
 ## 安装与升级
+
+请从 [Releases](https://github.com/yimouleng/MageAOEHelper-Forever/releases/latest) 下载附件 `MageAOEHelper-Forever_1.6.3.zip`。这是整理好目录的安装包；GitHub 自动生成的 “Source code” 是源码包。
 
 1. 完全退出游戏。先备份旧插件文件夹与相关 WTF/SavedVariables 文件；在插件列表停用旧的 MageAOEHelper，不要同时启用新旧两个版本。
 2. 将本包中的 MageAOEHelper-Forever 文件夹放到无限服客户端的 Interface/AddOns 下。最终必须是 Interface/AddOns/MageAOEHelper-Forever/MageAOEHelper-Forever.toc，不能多嵌套一层。从 GitHub 下载源码 ZIP 后，需把带有分支后缀的文件夹改名为 MageAOEHelper-Forever。
@@ -109,3 +121,97 @@ lua tests/test_stats.lua
 ```
 
 测试使用模拟游戏接口，不依赖真实角色或聊天记录，不将本地测试运行环境打包到插件中。公开源码保留原概念作者与参考说明，未附加未经确认的上游许可证声明。
+
+## English
+
+**Version: 1.6.3.** Target client: **WoW Forever 1.60.1, Interface 16001**. This is a customized adaptation, not an official release by the original author. The in-game UI is Simplified Chinese; English slash commands and English kill-message templates are supported. English documentation does not imply an English UI or compatibility with every WoW client.
+
+### Installation and upgrades
+
+1. Download the attached **MageAOEHelper-Forever_1.6.3.zip** from [Releases](https://github.com/yimouleng/MageAOEHelper-Forever/releases/latest). Use this ready-to-install asset, not GitHub's automatically generated “Source code” archive.
+2. Exit the game completely and back up the old addon folder and relevant WTF/SavedVariables files. Disable the old MageAOEHelper addon; do not enable both versions together.
+3. Extract the `MageAOEHelper-Forever` folder into the client's `Interface/AddOns` folder. The final path must be `Interface/AddOns/MageAOEHelper-Forever/MageAOEHelper-Forever.toc`, without an extra nested folder. If you choose the source archive instead, rename its branch/tag-suffixed root folder to `MageAOEHelper-Forever`.
+4. Restart the game. Use `/mah settings` for settings and `/mah show` to toggle visibility. **Tracking continues while the panel is hidden.**
+
+No WombatLog installation or other addon dependency is required. The package does not modify other game files. Upgrading from 1.6.1 or 1.6.2 retains cumulative statistics and window preferences; no statistics reset is needed. Details are initially collapsed when the preference has not been saved. Current-pull data is held in memory only.
+
+### Window size
+
+In settings, uncheck **锁定窗口位置与宽度** (lock position and width). Drag the bottom-right resize handle left to narrow the panel. Version 1.6.3 lowers the minimum width from 400 to **260 UI units**; the maximum remains 650. Existing valid widths are preserved rather than automatically changed. Reloading or expanding/collapsing details does not widen the saved window.
+
+Below 360 units, the title becomes **MAH-Forever**; the addon name and installation directory do not change. Labels and values occupy separate columns. Long text may be clipped to its column; hover over the row to read the full label, current value, and explanation. To shrink fonts and buttons as well, adjust **界面缩放** (UI scale) from 0.6 to 2.0.
+
+### Optional migration from the old addon name
+
+WoW loads saved files by addon name. Renaming the installation folder alone does not load the old `MageAOEHelper.lua` saved file. The internal variable names and compatible data structure are retained, but this addon cannot automatically read another addon's saved files.
+
+With the game fully closed and backups made, **copy** the old `MageAOEHelper.lua` to `MageAOEHelper-Forever.lua` in the account-level and relevant character-level `SavedVariables` folders, leaving the original untouched. These are files under **WTF**, not addon source files under Interface/AddOns. If a destination file already exists, back it up and choose which data to keep; do not overwrite newer statistics blindly. Without migration, the renamed addon starts with fresh data.
+
+Version 1.5 totals are preserved but marked as legacy data. Historical calculation errors cannot be repaired from aggregate counters. After backing up, consider `/mah reset` before a fresh farming session. This clears the character's statistics; the addon never performs this reset automatically. Older incompatible statistical formats are not imported.
+
+### What the statistics mean
+
+- **Current-pull XP (kills):** always the first row, for example `12500（12只）`. It sums the main XP amount in recognized kill messages for the current pull and shows the number of XP-granting kills. It is not a count of living enemies. Entering combat starts a new pull; leaving combat retains the result and accepts late XP messages. The next combat entry clears only the pull, not cumulative totals. Quest and exploration XP are excluded, and rested/group bonus annotations are not added twice.
+- **XP-granting kills:** one count per recognized `CHAT_MSG_COMBAT_XP_GAIN` kill message. Shared group XP counts too; this is not a personal killing-blow counter. Simultaneous messages with identical names and XP are counted separately. Deduplication uses valid message IDs only, so it is not guaranteed when IDs are unavailable.
+- **Total XP and XP/hour:** based on changes in the player's XP bar, including kills, quests, and exploration. Level transitions retain the confirmed baseline and wait for level, XP, and maximum XP to settle. After one second of unchanged snapshots, the addon attempts reconciliation; ambiguity lasting five seconds establishes a new baseline and records an XP gap. Totals with gaps are labeled as a lower bound. These are conservative addon heuristics, not API guarantees. Multiple-level jumps or identical old/new XP values may be impossible to reconstruct.
+- **Kill-message XP:** the main XP number from recognized kill messages, without double-counting bonus annotations. Unrecognized messages do not enter the sample set.
+- **Estimated kills to level:** remaining XP divided by average kill-message XP from up to 30 recent, same-level samples. At least three samples are required; samples expire after ten minutes of tracked online time. Level, group, zone, loading, and reload changes recalibrate samples. Quest/exploration XP is excluded. Use `/mah sample` after changing mobs or XP buffs.
+- **Sample quality:** 3–9 samples receive a small-sample notice; standard deviation divided by the mean above 35% receives a high-variation notice. Otherwise the sample is described as relatively stable. These are advisory rules, not confidence intervals or proof of future performance.
+- **Recent rates:** approximately five-minute XP/hour and kills/hour, including online idle time, with a 60-second warmup. Five-second buckets introduce up to roughly five seconds of boundary error. Context changes and resampling restart the recent window without clearing totals.
+- **Estimated time to level:** remaining XP divided by the recent kill-message XP rate, excluding quests and exploration. Requires warmup and at least three current-level samples. Gaps, unknown messages, legacy data, or inconsistent XP sources suppress the estimate. The target level cap is treated as 60.
+- **Reconciliation:** after two quiet seconds, compares total XP with kill-message XP. The difference is labeled “other/unclassified XP,” not automatically quest XP. It can include exploration, unrecognized messages, or synchronization differences. Negative differences are flagged; legacy data or XP gaps suppress the difference. A clean comparison does not prove all kills were observed.
+- **Gold:** positive and negative changes in the character's balance become income and spending; net income and income/hour are derived from them. Income may include loot, sales, mail, or trades. Combined transactions cannot be separated beyond observed balance changes. During same-login loading, only the net balance difference can be recovered and is flagged. Unreadable gold values are retried every 0.5 seconds.
+- **Tracked time:** online time while the world is loaded, including idle time and travel. Offline time and loading screens are excluded. Cumulative time survives reload/relogin; `/mah reset` starts a fresh session.
+- **Compact panel:** seven default rows: current pull, cumulative XP-granting kills, total XP/hour, kills/hour, estimated kills to level, net income, and tracked time. “展开详情” expands totals, gold breakdowns, recent rates, and diagnostics. Unsupported live-enemy counts are omitted; missing kill sources hide related rows, and level-cap characters do not see leveling estimates. Temporary unreadability and anomalies still produce warnings. Normal operation does not show a warning block.
+- **Reset and saving:** both reset buttons require confirmation and clear character totals, the current pull, samples, and recent rates while keeping window settings. `/mah reset` resets immediately without confirmation. Use `/mah wave` to clear only the current pull. Preferences use `MageAOEHelperDB`; character totals use `MageAOEHelperForeverSession`. Reloading retains totals but clears the current pull, recent rates, and samples, and establishes fresh XP/gold baselines. Offline or unobserved changes are not invented. Valid saved widths are 260–650, with 420 as the fallback.
+
+### Limitations
+
+- No complete live-enemy count is available. The addon does not register or read the restricted combat log, and does not substitute the target or nameplate count for a full combat roster.
+- **Pulls follow player combat boundaries, not exact mob-pack detection.** Chain-pulling without leaving combat remains one pull; use `/mah wave` to split it manually. Any new combat entry, even without a kill, starts a new pull. Shared group XP received out of combat joins the retained pull. Messages arriving after the next combat entry cannot reliably be assigned back to the previous pull. If combat events cannot be registered, use manual splitting. A first XP message before combat creates a provisional pull, retained if combat begins within one second; this is an event-order heuristic. There is no pull-history archive, and reload/relogin clears the current pull only.
+- Gray mobs, level-cap kills, and other kills without XP are not counted. XP-bar increases are never used to guess a kill count. Missing messages cannot be reconstructed.
+- Uses the client's `FIRSTPERSON`/`EXHAUSTION` templates, including Chinese, English, and positional placeholders. Known unnamed/quest formats are excluded from kill counting; unknown and unreadable messages have separate diagnostics. Exclusion does not prove that the source was a quest.
+- Same-login loading retains delivered kill messages and the XP baseline, followed by a one-second settling delay on return. Observed loading-screen rewards enter cumulative totals while loading time remains excluded from the rate denominator. Multiple-level gaps are not guessed.
+- Group/zone events trigger conservative resampling and may occur more frequently than actual farming-condition changes. Unsupported events appear in `/mah status`; use `/mah sample` as needed.
+- Diagnostic counts remain until reset. Parsing success is not presented as a true kill-coverage percentage. The addon does not store raw chat, character names, or combat logs, and does not send data externally.
+- **No WoW Forever client test environment is available.** Mock tests verify logic and wiring, not actual event permissions, message formats, font rendering, or disk persistence in the game.
+
+### Commands
+
+| Command | Action |
+| --- | --- |
+| `/mah settings` | Open/close settings |
+| `/mah show` | Toggle the panel; tracking continues while hidden |
+| `/mah lock` | Lock/unlock position and width |
+| `/mah details` | Expand/collapse detail rows |
+| `/mah wave` | Start a new pull; cumulative totals remain |
+| `/mah sample` | Clear samples and recent rates; cumulative totals remain |
+| `/mah reset` | Immediately reset this character's statistics, without confirmation |
+| `/mah status` or `/mah debug` | Show version, templates, current pull, message diagnostics, gaps, readability, and event registration failures |
+
+Chinese aliases are also available: `/mah 设置`, `/mah 显示`, `/mah 锁定`, `/mah 详情`, `/mah 新一波`, `/mah 重置`, `/mah 采样`, and `/mah 状态`. The longer `/mageaoehelper` prefix is supported too.
+
+### In-game checks
+
+1. After backing up and intentionally resetting, kill three XP-granting mobs. Compare the count, kill XP, and leveling estimate.
+2. AOE several same-name mobs and compare the first-row sum/count with XP messages. Leaving combat should retain the pull; entering again should clear only that pull. Test `/mah wave` during continuous combat. Expand details and wait 60 seconds to check recent rates.
+3. Turn in a quest: total XP should increase, kill counters should not, and the settled difference should be “other/unclassified.”
+4. Level up and check that XP is counted once and samples restart. Test group XP and rested XP separately.
+5. Buy/sell items and compare income, spending, and net income. Hide the panel and confirm tracking continues; check loading transitions too.
+6. Check `/mah sample`, `/reload`, and normal relogging for the documented persistence behavior. Resize to minimum width, expand details, hover long values, and reload to verify width, position, and scale.
+7. Cancel a reset confirmation and check that totals remain. Confirm a reset and check that totals clear while preferences remain. Confirm that the current-pull row stays first.
+8. For issues, provide `/mah status`, the actual kill-XP message (names may be redacted), and the full error text if one appears.
+
+### Credits, references, and development
+
+The concept comes from the user-supplied MageAOEHelper by **Zerka**. This adaptation reimplements the statistics module and Chinese layout. WombatLog's [KillAlert.lua](https://github.com/fkleindev/WombatLog/blob/main/KillAlert.lua) and [Stats.lua](https://github.com/fkleindev/WombatLog/blob/main/Stats.lua) informed the message-driven approach; no WombatLog code was copied, and its implementation is not an API guarantee.
+
+API references are public mirrors of Blizzard-generated documentation and default UI source: [chat events](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/ChatInfoDocumentation.lua), [unit APIs](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/UnitDocumentation.lua), [group events](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/PartyInfoDocumentation.lua), [zone events](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_Minimap/Mainline/Minimap.lua), [combat boundaries](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_CombatText/Shared/CombatText.lua), [frame sizing](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/SimpleFrameAPIDocumentation.lua), and [font strings](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/SimpleFontStringAPIDocumentation.lua). The `live` branch is not a compatibility guarantee for WoW Forever. Event registration failures are reported, and resize-bound API availability is checked.
+
+The repository root is the addon directory. The TOC loads `Stats.lua` before `MageAOEHelper-Forever.lua`. Internal saved-variable names and slash commands remain stable for compatibility. With Lua 5.1 installed, run from the repository root:
+
+```sh
+lua tests/test_stats.lua
+```
+
+**362 mocked assertions pass**, covering parsing, same-name AOE, deduplication, six upgrade-field arrival orders, delayed snapshots, XP gaps, gold recovery, loading transitions, rolling rates, sample expiry/variation, migrations, pull boundaries, reset confirmation, compact layout, missing-event degradation, narrow columns, title switching, tooltips, and width persistence. The runtime used for local tests is not included in the installation package. Tests do not replace in-game verification. Original concept attribution and reference notes are retained; no unverified upstream license grant is asserted.

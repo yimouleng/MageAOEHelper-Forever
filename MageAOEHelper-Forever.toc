@@ -2,7 +2,7 @@
 ## Title: MageAOEHelper-Forever
 ## Notes: 本波经验与击杀数、累计效率、升级估算与金币收支；精简中文面板。
 ## Author: Zerka (original addon); local Forever adaptation
-## Version: 1.6.2-forever-zhCN
+## Version: 1.6.3-forever-zhCN
 ## SavedVariables: MageAOEHelperDB
 ## SavedVariablesPerCharacter: MageAOEHelperForeverSession
 

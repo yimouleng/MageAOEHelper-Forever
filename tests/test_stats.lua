@@ -226,14 +226,23 @@ function methods:RegisterEvent(e)
     assert(e~='COMBAT_LOG_EVENT_UNFILTERED','restricted log must not be registered')
     self.events[e]=true
 end
-function methods:SetSize(w,h) self.w,self.h=w,h end
-function methods:SetHeight(h) self.h=h end
+function methods:SetSize(w,h)
+    self.w,self.h=w,h
+    if self.scripts.OnSizeChanged then self.scripts.OnSizeChanged(self,w,h) end
+end
+function methods:SetHeight(h)
+    self.h=h
+    if self.scripts.OnSizeChanged then self.scripts.OnSizeChanged(self,self.w,h) end
+end
+function methods:SetResizeBounds(...) self.resizeBounds={...} end
 function methods:GetWidth() return self.w or 1920 end
 function methods:GetHeight() return self.h or 1080 end
 function methods:SetScale(v) self.scale=v end
 function methods:GetEffectiveScale() return self.scale or 1 end
 function methods:GetCenter() return 960,540 end
 function methods:SetText(t) self.text=t; texts[t]=true end
+function methods:GetText() return self.text end
+function methods:SetWordWrap(v) self.wordWrap=v end
 function methods:SetShown(v) self.shown=v end
 function methods:Show() self.shown=true end
 function methods:Hide() self.shown=false end
@@ -298,7 +307,9 @@ function GameTooltip:SetOwner(owner) self.owner=owner end
 event('ADDON_LOADED','MageAOEHelper-Forever'); tick(10)
 eq(MageAOEHelperForeverSession.seconds,0,'prelogin not counted')
 event('PLAYER_ENTERING_WORLD',true,false)
-eq(MageAOEHelperDB.frameWidth,420,'minimum width migration')
+eq(MageAOEHelperDB.frameWidth,380,'old valid width retained without forced widening')
+eq(MageAOEHelperFrame.resizeBounds[1],260,'minimum width allows narrow windows')
+eq(MageAOEHelperFrame.resizeBounds[3],650,'maximum width unchanged')
 eq(MageAOEHelperFrame.h,260,'compact panel')
 eq(shownRows(),7,'seven primary rows')
 eq(row('本波经验（击杀数）').points.TOPLEFT[4],-42,'wave is first row')
@@ -312,6 +323,42 @@ eq(MageAOEHelperDB.frameY+MageAOEHelperFrame.h/2,topBefore,'expand preserves top
 click(MageAOEHelperFrame,'收起详情')
 eq(shownRows(),7,'collapse returns to compact rows')
 eq(MageAOEHelperDB.frameY+MageAOEHelperFrame.h/2,topBefore,'collapse preserves top edge')
+MageAOEHelperFrame:SetSize(260,MageAOEHelperFrame.h)
+local panelTitle
+for _,f in ipairs(frames) do
+    if f.parent==MageAOEHelperFrame and f.text and f.text:find('MAH%-Forever') then panelTitle=f end
+end
+eq(panelTitle~=nil,true,'narrow window uses short title')
+eq(panelTitle.wordWrap,false,'narrow title stays on one line')
+for _,f in ipairs(frames) do
+    if f.kind=='FontString' and f.parent and f.parent.parent==MageAOEHelperFrame then
+        eq(f.wordWrap,false,'row text cannot wrap onto adjacent rows')
+        eq(f.points.LEFT~=nil and f.points.RIGHT~=nil,true,'row columns have bounded widths')
+    end
+end
+local firstRow=row('本波经验（击杀数）')
+local waveLabel,waveValue
+for _,f in ipairs(frames) do
+    if f.parent==firstRow then
+        if f.text=='本波经验（击杀数）' then waveLabel=f else waveValue=f end
+    end
+end
+eq(waveLabel.points.RIGHT[3],112,'narrow label gets readable width')
+eq(waveValue.points.LEFT[3]-waveLabel.points.RIGHT[3],8,'columns retain separation')
+firstRow.scripts.OnEnter(firstRow)
+eq(GameTooltip.text:find('本波经验（击杀数）：0（0只）',1,true)~=nil,true,'tooltip includes full current value')
+MageAOEHelperFrame:SetSize(420,MageAOEHelperFrame.h)
+eq(panelTitle.text:find('MageAOEHelper%-Forever')~=nil,true,'widening restores full title')
+MageAOEHelperFrame:SetSize(260,MageAOEHelperFrame.h)
+for _,f in ipairs(frames) do
+    if f.parent==MageAOEHelperFrame and f.kind=='Button' and f.w==16 then f.scripts.OnMouseUp(f) end
+end
+eq(MageAOEHelperDB.frameWidth,260,'resize saves narrow width')
+click(MageAOEHelperFrame,'展开详情')
+eq(MageAOEHelperFrame.resizeBounds[1],260,'expansion does not restore old minimum width')
+eq(MageAOEHelperFrame.w,260,'expansion preserves chosen width')
+click(MageAOEHelperFrame,'收起详情')
+eq(MageAOEHelperForeverSession.kills,0,'resize does not alter statistics')
 event('PLAYER_REGEN_DISABLED')
 for i=1,5 do kill(i) end
 xp=600; event('PLAYER_XP_UPDATE','player'); tick(60)
@@ -404,6 +451,8 @@ event('ADDON_LOADED','MageAOEHelper-Forever'); event('PLAYER_ENTERING_WORLD',tru
 eq(MageAOEHelperForeverSession.kills,12,'reload retains totals')
 eq(MageAOEHelperForeverSession.totalXP,1200,'reload does not invent XP since last process')
 eq(#MageAOEHelperForeverSession.samples,0,'reload recalibrates samples')
+eq(MageAOEHelperDB.frameWidth,260,'reload preserves saved narrow width')
+eq(MageAOEHelperFrame.w,260,'reload does not stretch narrow window')
 eq(rowValue('本波经验（击杀数）'),'0（0只）','reload clears runtime wave only')
 xp=950; tick(2)
 eq(MageAOEHelperForeverSession.totalXP,1250,'reload resumes from fresh baseline')

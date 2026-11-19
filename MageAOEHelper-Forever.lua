@@ -1,4 +1,4 @@
--- MageAOEHelper-Forever 1.6.2: compact UI and per-wave XP statistics.
+-- MageAOEHelper-Forever 1.6.3: narrow-window layout and per-wave XP statistics.
 -- Original addon concept: Zerka. See README.md for provenance and limits.
 local addonName, ns = ...
 local S = ns.Stats
@@ -8,6 +8,8 @@ local failures = {}
 local eventsSeen = 0
 local frame, settings, values, footer, lockCheck, slider, scaleLabel, resize
 local rows, detailButton, resetDialog, layoutHeight, layoutKey
+local labels, title, help
+local MIN_WIDTH, MAX_WIDTH = 260, 650
 local primaryRows = {19, 2, 5, 3, 7, 10, 12}
 local detailRows = {4, 6, 8, 9, 11, 13, 14, 15, 16, 17, 18}
 local killRows = {[2]=true, [3]=true, [6]=true, [7]=true, [14]=true, [15]=true, [16]=true, [17]=true, [19]=true}
@@ -81,7 +83,7 @@ local function Layout(killUnavailable, maxLevel, hasWarning)
     end
     -- SetResizeBounds is optional on the target client, as in the previous version.
     -- https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/SimpleFrameAPIDocumentation.lua
-    if frame.SetResizeBounds then frame:SetResizeBounds(400, height, 650, height) end
+    if frame.SetResizeBounds then frame:SetResizeBounds(MIN_WIDTH, height, MAX_WIDTH, height) end
     frame:SetHeight(height)
     layoutHeight = height
     footer:ClearAllPoints()
@@ -89,6 +91,25 @@ local function Layout(killUnavailable, maxLevel, hasWarning)
     footer:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -14, -46 - count * 22)
     footer:SetShown(hasWarning)
     detailButton:SetText(db.showDetails and "收起详情" or "展开详情")
+end
+
+local function LayoutWidth()
+    if not labels or not title or not help then return end
+    local width = frame:GetWidth()
+    local narrow = width < 360
+    title:SetText("|cff69ccf0" .. (narrow and "MAH-Forever" or "MageAOEHelper-Forever") .. "|r  1.6.3")
+    help:SetText(narrow and "仅计有经验击杀 · 悬停查看详情" or "仅计有经验击杀 · 鼠标悬停查看说明")
+    local available = width - 28
+    local left = math.min(150, math.floor((available - 8) * 0.50))
+    for i = 2, 19 do
+        -- Anchor columns separately so long text cannot overlap the other column.
+        labels[i]:ClearAllPoints()
+        labels[i]:SetPoint("LEFT", rows[i], "LEFT", 0, 0)
+        labels[i]:SetPoint("RIGHT", rows[i], "LEFT", left, 0)
+        values[i]:ClearAllPoints()
+        values[i]:SetPoint("LEFT", rows[i], "LEFT", left + 8, 0)
+        values[i]:SetPoint("RIGHT", rows[i], "RIGHT", 0, 0)
+    end
 end
 
 local function ApplySettings()
@@ -201,6 +222,7 @@ local function CreateUI()
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
+    frame:SetScript("OnSizeChanged", LayoutWidth)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", function(self) if not db.locked then self:StartMoving() end end)
@@ -213,9 +235,11 @@ local function CreateUI()
         self:SetPoint("CENTER", UIParent, "CENTER", db.frameX, db.frameY)
     end)
     Backdrop(frame)
-    local title = Text(frame)
+    title = Text(frame)
     title:SetPoint("TOPLEFT", 14, -14)
-    title:SetText("|cff69ccf0MageAOEHelper-Forever|r  1.6.2")
+    title:SetPoint("TOPRIGHT", -68, -14)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
     local gear = Button(frame, "设置", 48, function() settings:SetShown(not settings:IsShown()); ApplySettings() end)
     gear:SetPoint("TOPRIGHT", -12, -8)
     local names = {[2]="有经验击杀", [3]="有经验击杀 / 小时", [4]="总经验", [5]="总经验 / 小时", [6]="杀怪经验（消息）", [7]="升级还需", [8]="收入", [9]="支出", [10]="净收入", [11]="收入 / 小时", [12]="在线统计时长", [13]="近期总经验 / 小时", [14]="近期击杀 / 小时", [15]="按近期刷怪升级", [16]="估算样本", [17]="其他 / 未归类经验", [18]="数据核对", [19]="本波经验（击杀数）"}
@@ -240,7 +264,7 @@ local function CreateUI()
         "等待数据安静2秒后核对两个来源。没有发现差额异常不等于击杀完整；可用 /mah status 查看未识别、不可读和经验缺口等诊断。",
         "当前一波杀怪经验消息的总和，括号是有经验击杀数。进战自动开始新一波，脱战后保留结果并接收延迟消息；再次进战只清空本波，不清累计。连续不脱战视为同一波，可输入 /mah wave 手动新开一波。任务经验不计入。没有消息编号时无法保证去重；组队共享经验也计入。"
     }
-    values, rows = {}, {}
+    values, rows, labels = {}, {}, {}
     for i = 2, 19 do
         local name = names[i]
         local row = CreateFrame("Frame", nil, frame)
@@ -249,23 +273,34 @@ local function CreateUI()
         row:SetHeight(22)
         row:EnableMouse(true)
         local tip = tips[i]
-        row:SetScript("OnEnter", function(self) Tooltip(self, tip) end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         local label = Text(row, "GameFontHighlightSmall")
         label:SetPoint("LEFT", 0, 0)
         label:SetText(name)
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)
+        labels[i] = label
         local v = Text(row, "GameFontHighlightSmall")
         v:SetPoint("RIGHT", 0, 0)
         v:SetText("—")
+        v:SetJustifyH("RIGHT")
+        v:SetWordWrap(false)
+        -- SetWordWrap/GetText follow Blizzard's generated font-string interface:
+        -- https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/SimpleFontStringAPIDocumentation.lua
+        row:SetScript("OnEnter", function(self)
+            Tooltip(self, name .. "：" .. (S.Safe(v:GetText()) or "—") .. "\n\n" .. tip)
+        end)
         values[i] = v
     end
     footer = Text(frame, "GameFontNormalSmall")
     footer:SetJustifyH("LEFT")
     footer:SetHeight(28)
     footer:Hide()
-    local help = Text(frame, "GameFontDisableSmall")
+    help = Text(frame, "GameFontDisableSmall")
     help:SetPoint("BOTTOMLEFT", 14, 12)
-    help:SetText("仅计有经验击杀 · 鼠标悬停查看说明")
+    help:SetPoint("BOTTOMRIGHT", -22, 12)
+    help:SetJustifyH("LEFT")
+    help:SetWordWrap(false)
     detailButton = Button(frame, "展开详情", 84, function() db.showDetails = not db.showDetails; Render() end)
     detailButton:SetPoint("BOTTOMLEFT", 14, 32)
     local quickReset = Button(frame, "重置", 60, function() resetDialog:Show() end)
@@ -350,12 +385,13 @@ local function CreateUI()
     end)
     confirm:SetPoint("BOTTOMRIGHT", -50, 18)
     resetDialog:Hide()
+    LayoutWidth()
     ApplySettings()
 end
 
 local function Status()
     local version, build, _, interface = GetBuildInfo()
-    Say("版本 1.6.2；客户端 " .. tostring(S.Safe(version)) .. " / " .. tostring(S.Safe(build)) .. "；接口 " .. tostring(S.Safe(interface)))
+    Say("版本 1.6.3；客户端 " .. tostring(S.Safe(version)) .. " / " .. tostring(S.Safe(build)) .. "；接口 " .. tostring(S.Safe(interface)))
     Say("杀怪模板 " .. (patterns.killCount or 0) .. "；本次加载收到经验消息 " .. eventsSeen)
     Say("累计排除非击杀 " .. session.excluded .. "；未识别 " .. session.unknown .. "；不可读 " .. session.unreadable .. "；重复ID " .. session.duplicates)
     Say("有经验击杀 " .. session.kills .. "；杀怪经验 " .. session.killXP .. "；总经验 " .. session.totalXP)
@@ -398,7 +434,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         db.frameX = S.Number(db.frameX, 0, -10000, 10000)
         db.frameY = S.Number(db.frameY, 100, -10000, 10000)
         db.frameScale = S.Number(db.frameScale, 1, 0.6, 2)
-        db.frameWidth = S.Number(db.frameWidth, 420, 400, 650)
+        db.frameWidth = S.Number(db.frameWidth, 420, MIN_WIDTH, MAX_WIDTH)
         db.showFrame = db.showFrame ~= false
         db.locked = db.locked == true
         db.showDetails = db.showDetails == true

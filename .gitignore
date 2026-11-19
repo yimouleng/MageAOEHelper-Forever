@@ -1,0 +1,16 @@
+# Local game data, credentials, archives, and test environments are not source.
+WTF/
+SavedVariables/
+*.bak
+*.log
+*.zip
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.venv/
+test_runtime/
+__pycache__/
+.DS_Store
+Thumbs.db

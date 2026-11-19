@@ -114,6 +114,39 @@ function S.Runtime()
     return {seen = {}, order = {}, clock = 0, buckets = {}, sampleTimes = {}, recentStart = 0}
 end
 
+-- A wave is a player-combat episode, not a combat-log reconstruction of a pack.
+-- Only the current wave lives in memory; cumulative saved counters are separate.
+function S.StartWave(r, reason)
+    r.wave = {xp = 0, kills = 0, started = r.clock, active = r.inCombat == true,
+        reason = reason or "manual", provisional = reason == "message"}
+    return r.wave
+end
+
+function S.Combat(r, inCombat)
+    inCombat = S.Safe(inCombat)
+    if type(inCombat) ~= "boolean" or inCombat == r.inCombat then return end
+    r.inCombat = inCombat
+    if inCombat then
+        -- A first XP message can precede the corresponding combat-entry event.
+        -- Keep that one-second provisional wave instead of losing its first kill.
+        if r.wave and r.wave.provisional and r.clock - r.wave.started <= 1 then
+            r.wave.active, r.wave.provisional, r.wave.ended = true, false, nil
+        else
+            S.StartWave(r, "combat")
+        end
+    elseif r.wave then
+        r.wave.active, r.wave.provisional, r.wave.ended = false, false, r.clock
+    end
+end
+
+function S.WaveKill(r, xp)
+    local wave = r.wave or S.StartWave(r, "message")
+    wave.xp, wave.kills = wave.xp + xp, wave.kills + 1
+    -- Late XP remains in the completed wave until the next explicit entry/reset.
+    -- Without a unit/kill attribution API, messages crossing that boundary cannot
+    -- be reliably reassigned; never claim this is an exact monster-pack detector.
+end
+
 -- Sixty-one 5-second buckets bound memory; all clocks exclude offline/loading time.
 function S.Record(r, field, amount)
     local slot = math.floor(r.clock / 5)
@@ -166,6 +199,7 @@ function S.Kill(session, runtime, message, lineID, level, patterns)
     if not xp then session[kind] = session[kind] + 1; return false end
     session.kills = session.kills + 1
     session.killXP = session.killXP + xp
+    S.WaveKill(runtime, xp)
     S.Record(runtime, "kills", 1)
     S.Record(runtime, "killXP", xp)
     level = S.Number(level, nil, 1, 1000)

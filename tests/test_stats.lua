@@ -180,10 +180,47 @@ eq(S.Restore(legacy).legacy,true,'legacy marker survives another reload')
 eq(S.Restore({schema=3,kills=-1,seconds='bad',totalXP=math.huge}).totalXP,0,'corrupt saved values sanitized')
 eq(S.New().legacy,nil,'explicit reset removes legacy flag')
 
+-- Per-wave totals are separate from saved totals and follow combat boundaries.
+s,r=S.New(),S.Runtime()
+S.Combat(r,false); eq(r.wave,nil,'idle login does not invent a wave')
+S.Combat(r,true); eq(r.wave.xp,0,'combat entry starts empty wave')
+S.Kill(s,r,message,1,20,p)
+S.Kill(s,r,'野猪死了，你获得了200点经验值。（100点休息奖励）',2,20,p)
+S.Kill(s,r,message,1,20,p)
+S.Kill(s,r,'任务奖励500点经验。',3,20,p)
+S.Kill(s,r,secret,4,20,p)
+eq(r.wave.xp,300,'wave sums accepted main XP, not bonuses or quest')
+eq(r.wave.kills,2,'wave excludes duplicates and unreadable messages')
+S.Combat(r,true); eq(r.wave.xp,300,'repeated combat entry cannot clear a wave')
+r.clock=10; S.Combat(r,false)
+eq(r.wave.xp,300,'combat exit retains completed wave')
+eq(r.wave.active,false,'completed wave marked inactive')
+S.Kill(s,r,message,5,20,p); eq(r.wave.xp,400,'late XP stays in completed wave')
+S.Combat(r,true)
+eq(r.wave.xp,0,'next combat clears only wave XP')
+eq(r.wave.kills,0,'next combat clears only wave kills')
+eq(s.killXP,400,'combat entry preserves cumulative XP')
+eq(s.kills,3,'combat entry preserves cumulative kills')
+S.Kill(s,r,message,6,20,p); r.clock=100; S.Kill(s,r,message,7,20,p)
+eq(r.wave.xp,200,'continuous combat is one wave even after idle')
+S.StartWave(r,'manual'); eq(r.wave.xp,0,'manual split clears wave')
+eq(s.kills,5,'manual split preserves cumulative stats')
+eq(r.wave.active,true,'manual split preserves combat state')
+S.Combat(r,secret); eq(r.inCombat,true,'secret combat state ignored')
+s,r=S.New(),S.Runtime()
+S.Kill(s,r,message,1,20,p); r.clock=0.5; S.Combat(r,true)
+eq(r.wave.xp,100,'first message just before combat entry retained')
+eq(r.wave.provisional,false,'provisional wave confirmed')
+s,r=S.New(),S.Runtime()
+S.Kill(s,r,message,1,20,p); r.clock=2; S.Combat(r,true)
+eq(r.wave.xp,0,'older unengaged message not assigned to new combat')
+eq(s.kills,1,'discarding provisional wave does not discard totals')
+
 -- Strict API mock: undefined methods fail, unlike an all-methods no-op stub.
 local frames,texts,methods={},{},{}
 for _,name in ipairs({'ClearAllPoints','SetClampedToScreen','SetMovable','SetResizable','SetResizeBounds','EnableMouse','RegisterForDrag','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetJustifyH','SetFrameStrata','SetOrientation','SetMinMaxValues','SetValueStep','SetThumbTexture','SetNormalTexture','StartMoving','StopMovingOrSizing','StartSizing'}) do methods[name]=function() end end
 function methods:SetPoint(point,...) self.points[point]={...} end
+function methods:ClearAllPoints() self.points={} end
 function methods:SetScript(e,f) self.scripts[e]=f end
 function methods:RegisterEvent(e)
     assert(e~='COMBAT_LOG_EVENT_UNFILTERED','restricted log must not be registered')
@@ -212,36 +249,78 @@ end
 function methods:CreateFontString() return CreateFrame('FontString',nil,self) end
 UIParent=CreateFrame('Frame'); UIParent:SetSize(1920,1080)
 SlashCmdList={}
-local xp,maxxp,level,money=100,1000,20,10000
+local xp,maxxp,level,money,combat=100,1000,20,10000,false
 function UnitXP() return xp end
 function UnitXPMax() return maxxp end
 function UnitLevel() return level end
 function GetMoney() return money end
+function UnitAffectingCombat() return combat end
 function GetBuildInfo() return '1.60.1','mock','date',16001 end
 for k,v in pairs(globals) do _G[k]=v end
 MageAOEHelperDB={frameWidth=380,frameScale=1,showFrame=true}
 assert(loadfile('MageAOEHelper-Forever.lua'))('MageAOEHelper-Forever',ns)
 local ef=frames[#frames]
-local function event(e,...) assert(ef.events[e],e); ef.scripts.OnEvent(ef,e,...) end
+local function event(e,...)
+    assert(ef.events[e],e)
+    if e=='PLAYER_REGEN_DISABLED' then combat=true end
+    if e=='PLAYER_REGEN_ENABLED' then combat=false end
+    ef.scripts.OnEvent(ef,e,...)
+end
 local function tick(seconds) ef.scripts.OnUpdate(ef,seconds) end
 local function kill(id) event('CHAT_MSG_COMBAT_XP_GAIN',message,'','','','','',0,0,'',0,id) end
 local function rowValue(label)
     for _,f in ipairs(frames) do
-        if f.text==label then
+        if f.text==label and f.parent and f.parent.parent==MageAOEHelperFrame then
             for _,v in ipairs(frames) do if v.kind=='FontString' and v.parent==f.parent and v~=f then return v.text end end
         end
     end
 end
+local function row(label)
+    for _,f in ipairs(frames) do
+        if f.text==label and f.parent and f.parent.parent==MageAOEHelperFrame then return f.parent end
+    end
+end
+local function shownRows()
+    local count=0
+    for _,f in ipairs(frames) do
+        if f.kind=='Frame' and f.parent==MageAOEHelperFrame and f.h==22 and f.shown then count=count+1 end
+    end
+    return count
+end
+local function click(parent,label)
+    for _,f in ipairs(frames) do
+        if f.kind=='Button' and f.parent==parent and f.text==label then f.scripts.OnClick(f); return end
+    end
+    error('button not found: '..label)
+end
+GameTooltip=CreateFrame('Frame')
+function GameTooltip:SetOwner(owner) self.owner=owner end
 event('ADDON_LOADED','MageAOEHelper-Forever'); tick(10)
 eq(MageAOEHelperForeverSession.seconds,0,'prelogin not counted')
 event('PLAYER_ENTERING_WORLD',true,false)
 eq(MageAOEHelperDB.frameWidth,420,'minimum width migration')
-eq(MageAOEHelperFrame.h,520,'expanded panel')
+eq(MageAOEHelperFrame.h,260,'compact panel')
+eq(shownRows(),7,'seven primary rows')
+eq(row('本波经验（击杀数）').points.TOPLEFT[4],-42,'wave is first row')
+eq(row('总经验').shown,false,'diagnostics initially collapsed')
+eq(row('实时交战怪物'),nil,'unsupported mob row removed entirely')
+local topBefore=MageAOEHelperDB.frameY+MageAOEHelperFrame.h/2
+click(MageAOEHelperFrame,'展开详情')
+eq(shownRows(),18,'expand all supported statistics')
+eq(MageAOEHelperFrame.h,502,'expanded height fits rows')
+eq(MageAOEHelperDB.frameY+MageAOEHelperFrame.h/2,topBefore,'expand preserves top edge')
+click(MageAOEHelperFrame,'收起详情')
+eq(shownRows(),7,'collapse returns to compact rows')
+eq(MageAOEHelperDB.frameY+MageAOEHelperFrame.h/2,topBefore,'collapse preserves top edge')
+event('PLAYER_REGEN_DISABLED')
 for i=1,5 do kill(i) end
 xp=600; event('PLAYER_XP_UPDATE','player'); tick(60)
 eq(MageAOEHelperForeverSession.kills,5,'actual payload ID position')
 eq(MageAOEHelperForeverSession.totalXP,500,'integrated XP')
 eq(MageAOEHelperForeverSession.seconds,60,'online clock')
+eq(rowValue('本波经验（击杀数）'),'500（5只）','wave rendered as total and count')
+event('PLAYER_REGEN_ENABLED')
+eq(rowValue('本波经验（击杀数）'),'500（5只）','finished wave stays displayed')
 eq(rowValue('近期总经验 / 小时'),'3.0万','rolling rate render')
 eq(rowValue('按近期刷怪升级'),'约 1 分钟','kill-only ETA render')
 eq(rowValue('其他 / 未归类经验'),'0','reconciliation render')
@@ -271,16 +350,46 @@ local before=MageAOEHelperForeverSession.kills
 SlashCmdList.MAGEAOEHELPER('sample')
 eq(MageAOEHelperForeverSession.kills,before,'manual resample retains session')
 for _,f in ipairs(frames) do
-    if f.kind=='Frame' and f.parent==MageAOEHelperFrame and f.h==22 then
+    if f.kind=='Frame' and f.parent==MageAOEHelperFrame and f.h==22 and f.shown then
         eq(f.points.TOPLEFT[4],f.points.TOPRIGHT[4],'row corners share Y coordinate')
     end
 end
+for _,f in ipairs(frames) do
+    if f.kind=='Frame' and f.parent==MageAOEHelperFrame and f.h==22 then
+        f.scripts.OnEnter(f)
+        eq(type(GameTooltip.text),'string','every row has a tooltip')
+        eq(#GameTooltip.text>0,true,'tooltip is not empty')
+    end
+end
+event('PLAYER_REGEN_DISABLED')
+eq(rowValue('本波经验（击杀数）'),'0（0只）','next wave auto clears display')
+eq(MageAOEHelperForeverSession.kills,before,'next wave does not clear cumulative kills')
+kill(11); tick(0.5)
+eq(rowValue('本波经验（击杀数）'),'100（1只）','new wave sums independently')
+SlashCmdList.MAGEAOEHELPER('wave')
+eq(rowValue('本波经验（击杀数）'),'0（0只）','manual wave command resets just wave')
+eq(MageAOEHelperForeverSession.kills,before+1,'manual wave preserves kills')
+kill(12); tick(0.5)
+click(MageAOEHelperFrame,'重置')
+eq(MageAOEHelperResetDialog.shown,true,'external reset requires confirmation')
+eq(MageAOEHelperForeverSession.kills,before+2,'opening confirmation does not reset')
+click(MageAOEHelperResetDialog,'取消')
+eq(MageAOEHelperResetDialog.shown,false,'cancel closes confirmation')
+eq(MageAOEHelperForeverSession.kills,before+2,'cancel preserves stats')
+click(MageAOEHelperSettingsFrame,'重置统计')
+eq(MageAOEHelperResetDialog.shown,true,'settings reset also requires confirmation')
+click(MageAOEHelperResetDialog,'确认重置')
+eq(MageAOEHelperForeverSession.kills,0,'confirmed reset clears totals')
+eq(rowValue('本波经验（击杀数）'),'0（0只）','confirmed reset clears wave')
+eq(MageAOEHelperDB.showDetails,false,'reset preserves display preferences')
+kill(13); tick(0.5)
+eq(rowValue('本波经验（击杀数）'),'100（1只）','counting resumes in same combat after reset')
 SlashCmdList.MAGEAOEHELPER('settings'); SlashCmdList.MAGEAOEHELPER('lock')
 SlashCmdList.MAGEAOEHELPER('status'); SlashCmdList.MAGEAOEHELPER('reset')
 eq(MageAOEHelperForeverSession.kills,0,'reset counts')
 eq(MageAOEHelperForeverSession.seconds,0,'reset time')
 eq(MageAOEHelperForeverSession.unknown,0,'reset health diagnostics')
-eq(rowValue('实时交战怪物'),'不可用','no fabricated mob count')
+eq(rowValue('实时交战怪物'),nil,'no fabricated mob count')
 
 -- Fresh /reload uses a new baseline, not offline or earlier-session gains.
 local saved=MageAOEHelperForeverSession
@@ -295,8 +404,14 @@ event('ADDON_LOADED','MageAOEHelper-Forever'); event('PLAYER_ENTERING_WORLD',tru
 eq(MageAOEHelperForeverSession.kills,12,'reload retains totals')
 eq(MageAOEHelperForeverSession.totalXP,1200,'reload does not invent XP since last process')
 eq(#MageAOEHelperForeverSession.samples,0,'reload recalibrates samples')
+eq(rowValue('本波经验（击杀数）'),'0（0只）','reload clears runtime wave only')
 xp=950; tick(2)
 eq(MageAOEHelperForeverSession.totalXP,1250,'reload resumes from fresh baseline')
+level=60; tick(0.5)
+eq(row('升级还需').shown,false,'max level hides remaining mobs')
+SlashCmdList.MAGEAOEHELPER('details')
+eq(row('按近期刷怪升级').shown,false,'max level hides ETA in details')
+SlashCmdList.MAGEAOEHELPER('details'); level=20
 
 -- Missing message event degrades gracefully without preventing XP/money UI.
 local regularRegister=methods.RegisterEvent
@@ -310,6 +425,25 @@ assert(loadfile('MageAOEHelper-Forever.lua'))('MageAOEHelper-Forever',nsMissing)
 ef=frames[#frames]
 event('ADDON_LOADED','MageAOEHelper-Forever'); event('PLAYER_ENTERING_WORLD',true,false)
 eq(texts['缺少击杀数据来源'],true,'missing event visible warning')
+eq(row('本波经验（击杀数）').shown,false,'missing kill source hides wave')
+eq(row('有经验击杀').shown,false,'missing kill source hides kills')
+eq(shownRows(),3,'remaining supported core rows are shown')
 SlashCmdList.MAGEAOEHELPER('status')
 eq(MageAOEHelperForeverSession.totalXP,1250,'registration failure does not reset counters')
+
+-- Missing combat boundary events require manual splitting, not guessed waves.
+function methods:RegisterEvent(e)
+    if e=='PLAYER_REGEN_DISABLED' or e=='PLAYER_REGEN_ENABLED' then error('unsupported combat event (mock)') end
+    regularRegister(self,e)
+end
+local nsNoCombat={}
+assert(loadfile('Stats.lua'))('MageAOEHelper-Forever',nsNoCombat)
+assert(loadfile('MageAOEHelper-Forever.lua'))('MageAOEHelper-Forever',nsNoCombat)
+ef=frames[#frames]
+event('ADDON_LOADED','MageAOEHelper-Forever'); event('PLAYER_ENTERING_WORLD',true,false)
+eq(texts['波次需用 /mah wave 手动分段 · /mah status'],true,'missing boundaries explicitly reported')
+kill(1); tick(0.5)
+eq(rowValue('本波经验（击杀数）'),'100（1只）','manual mode still counts wave')
+SlashCmdList.MAGEAOEHELPER('wave')
+eq(rowValue('本波经验（击杀数）'),'0（0只）','manual mode can split waves')
 print('PASS: '..tests..' assertions (Lua 5.1, mocked WoW API; NOT an in-game test)')
